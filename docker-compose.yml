@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  bot:
+    build: ./bot
+    network_mode: host
+    volumes:
+      - /tmp:/tmp
+    environment:
+      - TZ=Europe/Moscow
+    depends_on:
+      - redis
+
+  mail_checker:
+    build: ./mail_checker
+    network_mode: host
+    volumes:
+      - /tmp:/tmp
+    environment:
+      - TZ=Europe/Moscow
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    command: redis-server --requirepass your_redis_password
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
