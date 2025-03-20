@@ -23,7 +23,7 @@ services:
 
   redis:
     image: redis:alpine
-    command: redis-server --requirepass your_redis_password
+    command: redis-server --requirepass password
     volumes:
       - redis-data:/data
 

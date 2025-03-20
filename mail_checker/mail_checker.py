@@ -5,8 +5,8 @@ import subprocess
 import redis
 import time
 
-EMAIL = "parta-co-working@yandex.ru"
-PASSWORD = "anbrpylhoqyjegdr"
+EMAIL = "..."
+PASSWORD = "..."
 IMAP_SERVER = "imap.yandex.ru"
 PRINTER_NAME = "Kyocera2554"
 REDIS_HOST = "redis"
@@ -66,7 +66,8 @@ def check_email_and_print():
                         [
                             "lp",
                             "-h",
-                            "host.docker.internal:631",
+                            # "host.docker.internal:631",
+                            "93.183.81.123:631",
                             "-d",
                             PRINTER_NAME,
                             "-o",

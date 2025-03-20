@@ -9,12 +9,12 @@ from email.mime.application import MIMEApplication
 import redis
 
 # Конфигурация
-API_TOKEN = "5615823232:AAErSZU-p1wnFjPDeFOwl8rUKiqAQ63h430"
+API_TOKEN = "..."
 KYOCERA_PRINTER = "Kyocera2554"
 HP_EMAIL = "xyz123@hpeprint.com"
-EMAIL_FROM = "parta-co-working@yandex.ru"
-EMAIL_PASSWORD = "anbrpylhoqyjegdr"
-EMAIL_TO = "parta-co-working@yandex.ru"
+EMAIL_FROM = "..."
+EMAIL_PASSWORD = "..."
+EMAIL_TO = "..."
 REDIS_HOST = "redis"
 REDIS_PORT = 6379
 
@@ -72,7 +72,8 @@ async def print_to_kyocera(file_path: str, color: bool, paper_size: str) -> str:
             [
                 "lp",
                 "-h",
-                "host.docker.internal:631",
+                # "host.docker.internal:631",
+                "93.183.81.123:631",
                 "-d",
                 KYOCERA_PRINTER,
                 "-o",
@@ -121,7 +122,7 @@ async def send_to_email(
         msg.attach(attachment)
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        with smtplib.SMTP("smtp.yandex.ru", 587) as server:
             server.starttls()
             server.login(EMAIL_FROM, EMAIL_PASSWORD)
             server.send_message(msg)
