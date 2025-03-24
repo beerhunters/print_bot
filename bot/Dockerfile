@@ -10,9 +10,7 @@ RUN apt-get update && apt-get install -y \
 
 FROM python:3.11-slim
 WORKDIR /app
-
 RUN apt-get update && apt-get install -y \
-    cups-client \
     libreoffice \
     && rm -rf /var/lib/apt/lists/*
 
