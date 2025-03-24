@@ -6,26 +6,18 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("/tmp/bot.log"),  # Логи в файл
-        logging.StreamHandler(),  # Логи в консоль
-    ],
+    handlers=[logging.FileHandler("/tmp/bot.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
 # Конфигурация через переменные окружения
 API_TOKEN = os.getenv("API_TOKEN")
-HP_EMAIL = os.getenv("HP_EMAIL")
-EMAIL_FROM = os.getenv("EMAIL_FROM")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+PRINTER_NAME = os.getenv("PRINTER_NAME", "HP_M479")  # Имя принтера в CUPS
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -33,8 +25,8 @@ dp = Dispatcher()
 
 # Определение состояний
 class PrintStates(StatesGroup):
-    waiting_for_file_color = State()  # Ожидание файла для цветной печати
-    waiting_for_file_bw = State()  # Ожидание файла для ч/б печати
+    waiting_for_file_color = State()
+    waiting_for_file_bw = State()
 
 
 @dp.message(Command("start"))
@@ -44,7 +36,7 @@ async def send_welcome(message: types.Message):
         "Команды:\n"
         "/hp_color - цветная печать\n"
         "/hp_bw - ч/б печать\n"
-        "После команды просто отправь мне файл (.pdf, .jpg, .doc, .docx)."
+        "После команды отправь файл (.pdf, .jpg, .doc, .docx)."
     )
 
 
@@ -63,7 +55,6 @@ async def start_bw_printing(message: types.Message, state: FSMContext):
 
 
 async def convert_to_pdf(file_path: str, original_extension: str) -> str:
-    """Конвертирует .doc/.docx в PDF, если нужно."""
     logger.info(f"Converting file {file_path} with extension {original_extension}")
     if original_extension in [".doc", ".docx"]:
         output_file = file_path.replace(original_extension, ".pdf")
@@ -91,44 +82,34 @@ async def convert_to_pdf(file_path: str, original_extension: str) -> str:
     return file_path
 
 
-async def send_to_hp_email(file_path: str, file_extension: str, color: bool) -> str:
-    """Отправляет файл на email HP для печати."""
-    logger.info(f"Sending file {file_path} to {HP_EMAIL} (color: {color})")
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_FROM
-    msg["To"] = HP_EMAIL
-    msg["Subject"] = f"Print Job {'Color' if color else 'BW'}"
-
-    with open(file_path, "rb") as f:
-        attachment = MIMEApplication(
-            f.read(),
-            _subtype="pdf" if file_extension in [".pdf", ".doc", ".docx"] else "jpg",
-        )
-        attachment.add_header(
-            "Content-Disposition",
-            "attachment",
-            filename=(
-                "file.pdf"
-                if file_extension in [".pdf", ".doc", ".docx"]
-                else "file.jpg"
-            ),
-        )
-        msg.attach(attachment)
-
+async def print_to_hp(file_path: str, color: bool) -> str:
+    """Печатает файл через CUPS."""
+    color_option = "RGB" if color else "Grayscale"
     try:
-        with smtplib.SMTP("smtp.yandex.ru", 587, timeout=30) as server:
-            server.starttls()
-            server.login(EMAIL_FROM, EMAIL_PASSWORD)
-            server.send_message(msg)
-        logger.info(f"Email sent successfully to {HP_EMAIL}")
-        return f"Отправлено на HP ({'цвет' if color else 'ч/б'})!"
-    except Exception as e:
-        logger.error(f"Email sending error: {e}")
-        return f"Ошибка отправки: {e}"
+        subprocess.run(
+            [
+                "lp",
+                "-d",
+                PRINTER_NAME,
+                "-o",
+                "fit-to-page",
+                "-o",
+                f"ColorModel={color_option}",
+                "-o",
+                "media=A4",  # HP M479 поддерживает только A4
+                file_path,
+            ],
+            check=True,
+            timeout=60,
+        )
+        logger.info(f"Print job sent to {PRINTER_NAME} (color: {color})")
+        return f"Напечатано на HP ({'цвет' if color else 'ч/б'})!"
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Print error: {e}")
+        return f"Ошибка печати: {e}"
 
 
 async def handle_file(message: types.Message, state: FSMContext, color: bool):
-    """Обрабатывает полученный файл."""
     user_id = message.from_user.id
     logger.info(f"Handling file from user {user_id}")
 
@@ -143,7 +124,6 @@ async def handle_file(message: types.Message, state: FSMContext, color: bool):
     file = await bot.get_file(file_id)
     downloaded_file = await bot.download_file(file.file_path)
 
-    # Получаем расширение файла
     file_extension = (
         os.path.splitext(message.document.file_name)[1].lower()
         if message.document
@@ -166,7 +146,7 @@ async def handle_file(message: types.Message, state: FSMContext, color: bool):
 
     try:
         final_file = await convert_to_pdf(local_file, file_extension)
-        result = await send_to_hp_email(final_file, file_extension, color)
+        result = await print_to_hp(final_file, color)
     except Exception as e:
         if os.path.exists(local_file):
             os.remove(local_file)

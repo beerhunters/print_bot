@@ -9,6 +9,4 @@ services:
     environment:
       - TZ=Europe/Moscow
       - API_TOKEN=${API_TOKEN}
-      - HP_EMAIL=${HP_EMAIL}
-      - EMAIL_FROM=${EMAIL_FROM}
-      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - PRINTER_NAME=HP_M479
