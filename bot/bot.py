@@ -1,6 +1,7 @@
 import asyncio
 import os
 import subprocess
+import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -8,6 +9,17 @@ from aiogram.fsm.state import State, StatesGroup
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("/tmp/bot.log"),  # Логи в файл
+        logging.StreamHandler(),  # Логи в консоль
+    ],
+)
+logger = logging.getLogger(__name__)
 
 # Конфигурация через переменные окружения
 API_TOKEN = os.getenv("API_TOKEN")
@@ -40,16 +52,19 @@ async def send_welcome(message: types.Message):
 async def start_color_printing(message: types.Message, state: FSMContext):
     await message.reply("Отправь мне файл для цветной печати на HP.")
     await state.set_state(PrintStates.waiting_for_file_color)
+    logger.info(f"User {message.from_user.id} started color printing")
 
 
 @dp.message(Command("hp_bw"))
 async def start_bw_printing(message: types.Message, state: FSMContext):
     await message.reply("Отправь мне файл для ч/б печати на HP.")
     await state.set_state(PrintStates.waiting_for_file_bw)
+    logger.info(f"User {message.from_user.id} started BW printing")
 
 
 async def convert_to_pdf(file_path: str, original_extension: str) -> str:
     """Конвертирует .doc/.docx в PDF, если нужно."""
+    logger.info(f"Converting file {file_path} with extension {original_extension}")
     if original_extension in [".doc", ".docx"]:
         output_file = file_path.replace(original_extension, ".pdf")
         try:
@@ -68,14 +83,17 @@ async def convert_to_pdf(file_path: str, original_extension: str) -> str:
             )
             if os.path.exists(file_path):
                 os.remove(file_path)
+            logger.info(f"Converted to {output_file}")
             return f"/tmp/{os.path.basename(output_file)}"
         except subprocess.CalledProcessError as e:
+            logger.error(f"Conversion error: {e}")
             raise Exception(f"Ошибка конвертации: {e}")
     return file_path
 
 
 async def send_to_hp_email(file_path: str, file_extension: str, color: bool) -> str:
     """Отправляет файл на email HP для печати."""
+    logger.info(f"Sending file {file_path} to {HP_EMAIL} (color: {color})")
     msg = MIMEMultipart()
     msg["From"] = EMAIL_FROM
     msg["To"] = HP_EMAIL
@@ -102,15 +120,21 @@ async def send_to_hp_email(file_path: str, file_extension: str, color: bool) -> 
             server.starttls()
             server.login(EMAIL_FROM, EMAIL_PASSWORD)
             server.send_message(msg)
+        logger.info(f"Email sent successfully to {HP_EMAIL}")
         return f"Отправлено на HP ({'цвет' if color else 'ч/б'})!"
     except Exception as e:
+        logger.error(f"Email sending error: {e}")
         return f"Ошибка отправки: {e}"
 
 
 async def handle_file(message: types.Message, state: FSMContext, color: bool):
     """Обрабатывает полученный файл."""
+    user_id = message.from_user.id
+    logger.info(f"Handling file from user {user_id}")
+
     if not (message.document or message.photo):
         await message.reply("Пожалуйста, отправь файл (.pdf, .jpg, .doc, .docx)!")
+        logger.warning(f"User {user_id} sent non-file message")
         return
 
     file_id = (
@@ -125,16 +149,20 @@ async def handle_file(message: types.Message, state: FSMContext, color: bool):
         if message.document
         else ".jpg"
     )
+    logger.info(f"File extension: {file_extension}")
+
     if file_extension not in [".pdf", ".jpg", ".doc", ".docx"]:
         await message.reply(
             "Формат не поддерживается! Используй .pdf, .jpg, .doc или .docx."
         )
+        logger.warning(f"Unsupported file format: {file_extension}")
         await state.clear()
         return
 
     local_file = f"/tmp/file{file_extension}"
     with open(local_file, "wb") as f:
         f.write(downloaded_file.read())
+    logger.info(f"File saved locally: {local_file}")
 
     try:
         final_file = await convert_to_pdf(local_file, file_extension)
@@ -142,6 +170,7 @@ async def handle_file(message: types.Message, state: FSMContext, color: bool):
     except Exception as e:
         if os.path.exists(local_file):
             os.remove(local_file)
+        logger.error(f"Processing error: {e}")
         await message.reply(str(e))
         await state.clear()
         return
@@ -150,6 +179,7 @@ async def handle_file(message: types.Message, state: FSMContext, color: bool):
         os.remove(final_file)
     if os.path.exists(local_file):
         os.remove(local_file)
+    logger.info(f"File processed and cleaned up: {final_file}")
 
     await message.reply(result)
     await state.clear()
@@ -166,6 +196,7 @@ async def process_file_bw(message: types.Message, state: FSMContext):
 
 
 async def main():
+    logger.info("Starting bot")
     await dp.start_polling(bot)
 
 
