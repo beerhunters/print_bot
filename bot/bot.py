@@ -119,9 +119,10 @@ async def handle_file(message: types.Message, state: FSMContext, color: bool):
     file = await bot.get_file(file_id)
     downloaded_file = await bot.download_file(file.file_path)
 
+    # Получаем расширение файла
     file_extension = (
-        os.path.splitext(file.file_name)[1].lower()
-        if message.document and file.file_name
+        os.path.splitext(message.document.file_name)[1].lower()
+        if message.document
         else ".jpg"
     )
     if file_extension not in [".pdf", ".jpg", ".doc", ".docx"]:
