@@ -11,7 +11,7 @@ import redis
 # Конфигурация
 API_TOKEN = "..."
 KYOCERA_PRINTER = "Kyocera2554"
-HP_EMAIL = "xyz123@hpeprint.com"
+HP_EMAIL = "d2ybqkm879@hpeprint.com"
 EMAIL_FROM = "..."
 EMAIL_PASSWORD = "..."
 EMAIL_TO = "..."
