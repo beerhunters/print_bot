@@ -3,6 +3,8 @@ import os
 import subprocess
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -17,14 +19,33 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 
+# Определение состояний
+class PrintStates(StatesGroup):
+    waiting_for_file_color = State()  # Ожидание файла для цветной печати
+    waiting_for_file_bw = State()  # Ожидание файла для ч/б печати
+
+
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
     await message.reply(
-        "Привет! Отправь мне документ (.pdf, .doc, .docx) или фото (.jpg).\n"
+        "Привет! Я помогу напечатать документы на HP.\n"
         "Команды:\n"
-        "/hp_color - цветная печать на HP\n"
-        "/hp_bw - ч/б печать на HP"
+        "/hp_color - цветная печать\n"
+        "/hp_bw - ч/б печать\n"
+        "После команды просто отправь мне файл (.pdf, .jpg, .doc, .docx)."
     )
+
+
+@dp.message(Command("hp_color"))
+async def start_color_printing(message: types.Message, state: FSMContext):
+    await message.reply("Отправь мне файл для цветной печати на HP.")
+    await state.set_state(PrintStates.waiting_for_file_color)
+
+
+@dp.message(Command("hp_bw"))
+async def start_bw_printing(message: types.Message, state: FSMContext):
+    await message.reply("Отправь мне файл для ч/б печати на HP.")
+    await state.set_state(PrintStates.waiting_for_file_bw)
 
 
 async def convert_to_pdf(file_path: str, original_extension: str) -> str:
@@ -86,8 +107,12 @@ async def send_to_hp_email(file_path: str, file_extension: str, color: bool) -> 
         return f"Ошибка отправки: {e}"
 
 
-async def handle_file(message: types.Message, color: bool):
-    """Обрабатывает файл и отправляет на печать."""
+async def handle_file(message: types.Message, state: FSMContext, color: bool):
+    """Обрабатывает полученный файл."""
+    if not (message.document or message.photo):
+        await message.reply("Пожалуйста, отправь файл (.pdf, .jpg, .doc, .docx)!")
+        return
+
     file_id = (
         message.document.file_id if message.document else message.photo[-1].file_id
     )
@@ -101,8 +126,9 @@ async def handle_file(message: types.Message, color: bool):
     )
     if file_extension not in [".pdf", ".jpg", ".doc", ".docx"]:
         await message.reply(
-            "Формат не поддерживается! Используйте .pdf, .jpg, .doc или .docx."
+            "Формат не поддерживается! Используй .pdf, .jpg, .doc или .docx."
         )
+        await state.clear()
         return
 
     local_file = f"/tmp/file{file_extension}"
@@ -116,33 +142,26 @@ async def handle_file(message: types.Message, color: bool):
         if os.path.exists(local_file):
             os.remove(local_file)
         await message.reply(str(e))
+        await state.clear()
         return
 
     if os.path.exists(final_file) and final_file != local_file:
         os.remove(final_file)
     if os.path.exists(local_file):
         os.remove(local_file)
+
     await message.reply(result)
+    await state.clear()
 
 
-@dp.message(Command("hp_color"))
-async def print_hp_color(message: types.Message):
-    if not message.reply_to_message or not (
-        message.reply_to_message.document or message.reply_to_message.photo
-    ):
-        await message.reply("Ответь на сообщение с файлом!")
-        return
-    await handle_file(message.reply_to_message, True)
+@dp.message(PrintStates.waiting_for_file_color)
+async def process_file_color(message: types.Message, state: FSMContext):
+    await handle_file(message, state, color=True)
 
 
-@dp.message(Command("hp_bw"))
-async def print_hp_bw(message: types.Message):
-    if not message.reply_to_message or not (
-        message.reply_to_message.document or message.reply_to_message.photo
-    ):
-        await message.reply("Ответь на сообщение с файлом!")
-        return
-    await handle_file(message.reply_to_message, False)
+@dp.message(PrintStates.waiting_for_file_bw)
+async def process_file_bw(message: types.Message, state: FSMContext):
+    await handle_file(message, state, color=False)
 
 
 async def main():
